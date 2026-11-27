@@ -13,9 +13,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script type="importmap">
-    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
-  </script>
 </head>
 <body>
   <canvas id="c"></canvas>
@@ -31,6 +28,19 @@
 
   <div id="toast" hidden></div>
 
-  <script type="module" src="app.js"></script>
+  <script>
+    // Safety net: if the game can't start (old browser, no 3D support, something
+    // blocked), say so instead of sitting on "Opening the hat…" forever.
+    function hatStuck() {
+      if (window.__hatReady) return;
+      window.__hatReady = true;
+      document.getElementById("panel").innerHTML =
+        '<h2>The hat is stuck 😬</h2><p>This browser couldn\'t start the game. Try opening the link in Chrome or Safari.</p>' +
+        '<button class="btn" onclick="location.reload()">Try again</button>';
+    }
+    addEventListener("error", function () { if (!window.__hatReady) setTimeout(hatStuck, 300); });
+    setTimeout(hatStuck, 12000);
+  </script>
+  <script type="module" src="app.js" onerror="hatStuck()"></script>
 </body>
 </html>

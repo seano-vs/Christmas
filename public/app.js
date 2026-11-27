@@ -1,4 +1,6 @@
-import * as THREE from "three";
+// three.js is served from this site (not a CDN) so tracker blockers can't break the game.
+import * as THREE from "./vendor/three.module.min.js";
+window.__hatLoaded = true;
 
 // ============================================================================
 // Little helpers
@@ -398,6 +400,7 @@ async function api(path, body) {
 }
 
 async function boot() {
+  window.__hatReady = true;
   requestAnimationFrame(frame);
   try {
     state.data = await api("api/state");
