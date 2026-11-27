@@ -646,27 +646,58 @@ async function pickPaper(p) {
     setFold(p, 1 - ease(t));
     if (!shown && t > 0.4) { shown = true; showName(); }
   });
+  // snapshot the open paper for the WhatsApp preview card, before the confetti
+  const upload = snapshot(p)
+    .then((blob) => fetch(`api/card?name=${encodeURIComponent(state.me)}&token=${encodeURIComponent(r.token)}`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob }))
+    .catch((e) => console.warn("card upload failed", e));
   burst(p.g.position.clone());
   navigator.vibrate?.([30, 40, 60]);
 
-  reveal(r.target);
+  reveal(r, upload);
 }
 
-function reveal(target) {
+// Render a dedicated 1200x630 frame for the preview card, centred on the paper.
+function snapshot(p) {
+  const W = 1200, H = 630;
+  const camPos = camera.position.clone();
+  const pr = renderer.getPixelRatio();
+  // slide the camera sideways (no rotation) so the paper sits dead centre
+  const fwd = camera.getWorldDirection(new THREE.Vector3());
+  const toPaper = p.g.position.clone().sub(camera.position);
+  camera.position.add(toPaper.addScaledVector(fwd, -toPaper.dot(fwd)));
+  camera.aspect = W / H;
+  camera.fov = 34;
+  camera.updateProjectionMatrix();
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H, false);
+  renderer.render(scene, camera);
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  out.getContext("2d").drawImage(renderer.domElement, 0, 0);
+  // put everything back before the next frame is shown
+  camera.position.copy(camPos);
+  renderer.setPixelRatio(pr);
+  resize();
+  return new Promise((ok, fail) => out.toBlob((b) => (b ? ok(b) : fail()), "image/jpeg", 0.86));
+}
+
+function reveal({ target, v }, upload) {
   const { names, drawn } = state.data;
-  const link = new URL(`s/${encodeURIComponent(state.me)}`, location.href).href;
-  const text = `🎩 I just pulled a name from the hat! ${drawn.length} of ${names.length} done. Your turn 👉 ${link}`;
+  const link = new URL(`s/${encodeURIComponent(state.me)}${v ? `?v=${v}` : ""}`, location.href).href;
+  const text = `🎩 I pulled ${target} out of the hat! ${drawn.length} of ${names.length} done. Your turn 👉 ${link}`;
   showPanel(`
     <p style="margin:0">You pulled…</p>
     <div class="big">${esc(target)}</div>
-    <p>🤫 Keep it secret!</p>
     <div class="stack">
-      <a class="btn green" id="wa" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">
+      <a class="btn green" id="wa" style="opacity:.6;pointer-events:none" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.5 1 2.7.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg>
         Tell the group on WhatsApp
       </a>
     </div>
-    <p class="muted">Your name stays saved on this phone. The share doesn't reveal who you got.</p>`);
+    <p class="muted">Your paper stays saved on this phone.</p>`);
+  // wait (briefly) for the preview card upload so WhatsApp gets the real picture
+  const wa = $("#wa");
+  Promise.race([upload, sleep(5000)]).then(() => wa.removeAttribute("style"));
 }
 
 boot();

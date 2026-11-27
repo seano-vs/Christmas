@@ -15,6 +15,7 @@ export class Hat extends DurableObject {
     if (!s || s.sig !== sig) {
       // First run, or the list of names was edited: start a fresh hat.
       s = { sig, pairs: makeLoop(names), drawn: {} };
+      await this.ctx.storage.deleteAll(); // drop old preview cards too
       await this.ctx.storage.put("state", s);
     }
     return s;
@@ -31,13 +32,36 @@ export class Hat extends DurableObject {
     const prev = s.drawn[name];
     if (prev) {
       // Same phone coming back: show them their paper again.
-      if (token && prev.token === token) return { target: s.pairs[name], token, again: true };
+      if (token && prev.token === token) return { target: s.pairs[name], token, v: prev.v, again: true };
       return { error: `${name} has already pulled a name from the hat.` };
     }
     const t = crypto.randomUUID();
-    s.drawn[name] = { token: t, at: Date.now() };
+    const v = t.slice(-8); // short version tag, busts WhatsApp's preview cache
+    s.drawn[name] = { token: t, v, at: Date.now() };
     await this.ctx.storage.put("state", s);
-    return { target: s.pairs[name], token: t, drawnCount: Object.keys(s.drawn).length };
+    return { target: s.pairs[name], token: t, v, drawnCount: Object.keys(s.drawn).length };
+  }
+
+  // The drawer's phone uploads a snapshot of their unfolded paper; it becomes
+  // the WhatsApp preview image for their share link.
+  async setCard(names, name, token, bytes) {
+    const s = await this.load(names);
+    const d = s.drawn[name];
+    if (!d || d.token !== token) return { error: "Not your paper" };
+    await this.ctx.storage.put(`card:${name}`, bytes);
+    d.card = true;
+    await this.ctx.storage.put("state", s);
+    return { ok: true };
+  }
+
+  async getCard(name) {
+    return (await this.ctx.storage.get(`card:${name}`)) || null;
+  }
+
+  async share(names, who) {
+    const s = await this.load(names);
+    const d = s.drawn[who];
+    return { drawn: Object.keys(s.drawn), target: d ? s.pairs[who] : null, v: d?.v, card: !!d?.card };
   }
 
   async reset() {
@@ -102,6 +126,22 @@ export default {
       return json(r, r.error ? 409 : 200);
     }
 
+    if (url.pathname === "/api/card" && req.method === "POST") {
+      const bytes = await req.arrayBuffer();
+      const head = new Uint8Array(bytes, 0, Math.min(2, bytes.byteLength));
+      if (bytes.byteLength > 1_500_000 || head[0] !== 0xff || head[1] !== 0xd8) return json({ error: "Bad image" }, 400);
+      const r = await hat.setCard(names, url.searchParams.get("name") || "", url.searchParams.get("token") || "", bytes);
+      return json(r, r.error ? 403 : 200);
+    }
+
+    // /card/<name>.jpg: that person's preview image (falls back to the generic one)
+    const cardMatch = url.pathname.match(/^\/card\/(.+)\.jpg$/);
+    if (cardMatch) {
+      const bytes = await hat.getCard(decodeURIComponent(cardMatch[1]));
+      if (!bytes) return env.ASSETS.fetch(new Request(new URL("/og.jpg", url), req));
+      return new Response(bytes, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=300" } });
+    }
+
     if (url.pathname === "/api/reset" && req.method === "POST") {
       if (!env.ADMIN_KEY || req.headers.get("x-admin-key") !== env.ADMIN_KEY) return json({ error: "nope" }, 403);
       return json(await hat.reset());
@@ -111,14 +151,19 @@ export default {
     // renders a preview card; real people are bounced straight to the game.
     if (url.pathname.startsWith("/s/") || url.pathname === "/s") {
       const who = decodeURIComponent(url.pathname.slice(3)).trim();
-      const { drawn } = await hat.status(names);
+      const info = await hat.share(names, who);
+      const { drawn } = info;
       const left = names.length - drawn.length;
-      const ogTitle = who ? `🎩 ${who} pulled a name from the hat!` : `🎩 ${title}`;
+      const ogTitle = info.target
+        ? `🎩 ${who} pulled ${info.target} from the hat!`
+        : who ? `🎩 ${who} is pulling a name from the hat…` : `🎩 ${title}`;
       const ogDesc =
         left > 0
           ? `${drawn.length} of ${names.length} have drawn. ${left} still to go. Tap to take your turn!`
           : `All ${names.length} names have been drawn. Merry Christmas! 🎄`;
-      const img = `${url.origin}${root}/og.jpg`;
+      const img = info.card
+        ? `${url.origin}${root}/card/${encodeURIComponent(who)}.jpg?v=${info.v}`
+        : `${url.origin}${root}/og.jpg`;
       return new Response(
         `<!doctype html><html><head><meta charset="utf-8">
 <title>${esc(ogTitle)}</title>
