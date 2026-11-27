@@ -400,7 +400,7 @@ async function api(path, body) {
 async function boot() {
   requestAnimationFrame(frame);
   try {
-    state.data = await api("/api/state");
+    state.data = await api("api/state");
   } catch {
     showPanel(`<h2>The hat is stuck 😬</h2><p>Couldn't reach the server. Try again in a moment.</p>`);
     return;
@@ -586,7 +586,7 @@ async function pickPaper(p) {
   state.stage = "reveal";
   hint.hidden = true;
   const saved = store.get();
-  const req = api("/api/draw", { name: state.me, token: saved?.name === state.me ? saved.token : null }).catch(() => ({ error: "Couldn't reach the hat. Try again." }));
+  const req = api("api/draw", { name: state.me, token: saved?.name === state.me ? saved.token : null }).catch(() => ({ error: "Couldn't reach the hat. Try again." }));
   navigator.vibrate?.(40);
 
   if (!p) { p = makePaper(PAPER_COLORS[0]); p.g.position.set(0, FLOOR, 0); hat.add(p.g); papers.push(p); }
@@ -619,7 +619,7 @@ async function pickPaper(p) {
     await tween(0.6, (t) => p.g.position.lerpVectors(target, p0, ease(t)));
     hat.attach(p.g);
     p.flying = false;
-    state.data = await api("/api/state").catch(() => state.data);
+    state.data = await api("api/state").catch(() => state.data);
     if (r.error.includes("already")) store.clear();
     menu();
     return;
@@ -654,7 +654,7 @@ async function pickPaper(p) {
 
 function reveal(target) {
   const { names, drawn } = state.data;
-  const link = `${location.origin}/s/${encodeURIComponent(state.me)}`;
+  const link = new URL(`s/${encodeURIComponent(state.me)}`, location.href).href;
   const text = `🎩 I just pulled a name from the hat! ${drawn.length} of ${names.length} done. Your turn 👉 ${link}`;
   showPanel(`
     <p style="margin:0">You pulled…</p>

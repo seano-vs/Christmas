@@ -2,12 +2,21 @@ name = "christmas-hat"
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
 
+# Serve at seance.sh/xmas (and everything under it). Deploys keep these in sync,
+# so there's no need to also set the route in the dashboard.
+routes = [
+  { pattern = "seance.sh/xmas", zone_name = "seance.sh" },
+  { pattern = "seance.sh/xmas/*", zone_name = "seance.sh" },
+]
+
 # Static files (the 3D game) live in ./public and are served directly.
 [assets]
 directory = "./public"
 binding = "ASSETS"
 
 [vars]
+# Must match the route above. Leave empty to serve from the root of a domain.
+BASE_PATH = "/xmas"
 # Everyone in the hat, comma separated. Edit this, then `npm run deploy`.
 NAMES = "Alice,Bob,Charlie,Dana,Eli,Fran"
 # Shown on the page and in the WhatsApp preview card.

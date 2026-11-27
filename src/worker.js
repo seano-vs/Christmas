@@ -78,6 +78,16 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const { names, title } = config(env);
+
+    // Mounted under a sub-path (e.g. seance.sh/xmas)? Strip it so the rest of
+    // the app can pretend it lives at "/". Requests without it (workers.dev) work too.
+    const base = (env.BASE_PATH || "").replace(/\/+$/, "");
+    if (base && url.pathname === base) {
+      return Response.redirect(`${url.origin}${base}/${url.search}`, 301);
+    }
+    const mounted = base && url.pathname.startsWith(base + "/");
+    const root = mounted ? base : "";
+    if (mounted) url.pathname = url.pathname.slice(base.length);
     const hat = env.HAT.get(env.HAT.idFromName("hat"));
 
     if (url.pathname === "/api/state") {
@@ -108,7 +118,7 @@ export default {
         left > 0
           ? `${drawn.length} of ${names.length} have drawn. ${left} still to go. Tap to take your turn!`
           : `All ${names.length} names have been drawn. Merry Christmas! 🎄`;
-      const img = `${url.origin}/og.jpg`;
+      const img = `${url.origin}${root}/og.jpg`;
       return new Response(
         `<!doctype html><html><head><meta charset="utf-8">
 <title>${esc(ogTitle)}</title>
@@ -119,14 +129,22 @@ export default {
 <meta property="og:image" content="${esc(img)}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:url" content="${esc(url.href)}">
+<meta property="og:url" content="${esc(req.url)}">
 <meta name="twitter:card" content="summary_large_image">
-<meta http-equiv="refresh" content="0;url=/">
-</head><body><script>location.replace("/")</script><a href="/">Go to the hat</a></body></html>`,
+<meta http-equiv="refresh" content="0;url=${root}/">
+</head><body><script>location.replace("${root}/")</script><a href="${root}/">Go to the hat</a></body></html>`,
         { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } },
       );
     }
 
-    return env.ASSETS.fetch(req);
+    const res = await env.ASSETS.fetch(new Request(url, req));
+    // keep any asset redirects (e.g. /index.html -> /) inside the sub-path
+    const loc = res.headers.get("location");
+    if (root && loc && loc.startsWith("/")) {
+      const r = new Response(res.body, res);
+      r.headers.set("location", root + loc);
+      return r;
+    }
+    return res;
   },
 };

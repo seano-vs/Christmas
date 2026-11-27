@@ -18,6 +18,8 @@ npx wrangler login
 npm run deploy
 ```
 
+It's served at **seance.sh/xmas**. The routes live in `wrangler.toml`, so every deploy keeps them in sync. To move it, change `routes` and `BASE_PATH` together. To serve from the root of a domain, set `BASE_PATH = ""`.
+
 That's all. State lives in one SQLite-backed **Durable Object**, which works on the free plan. There's nothing to create in the dashboard, and every pull is atomic, so two phones can never take the same paper.
 
 > ⚠️ If you change `NAMES` after people have started pulling, the hat starts over.
