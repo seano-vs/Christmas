@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1630">
+  <title>The Hat</title>
+  <meta property="og:title" content="🎩 Pull a name from the hat">
+  <meta property="og:description" content="Pick your name, shake the hat, grab a paper.">
+  <meta property="og:image" content="/og.jpg">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎩</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <header id="top"><div class="badge">🎩 <span id="title">The Hat</span></div></header>
+
+  <div id="hint" hidden>
+    <div id="hintText"></div>
+    <div id="meter"><div id="meterFill"></div></div>
+  </div>
+
+  <section id="panel" class="card"><p class="muted">Opening the hat…</p></section>
+
+  <div id="toast" hidden></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

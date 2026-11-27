@@ -1,0 +1,24 @@
+name = "christmas-hat"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+# Static files (the 3D game) live in ./public and are served directly.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+# Everyone in the hat, comma separated. Edit this, then `npm run deploy`.
+NAMES = "Alice,Bob,Charlie,Dana,Eli,Fran"
+# Shown on the page and in the WhatsApp preview card.
+TITLE = "Christmas Hat 2026"
+
+# One Durable Object holds the whole draw. Zero setup: no namespace to create,
+# and every draw is atomic, so two people can never pull the same paper.
+[[durable_objects.bindings]]
+name = "HAT"
+class_name = "Hat"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hat"]
