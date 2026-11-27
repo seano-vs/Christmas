@@ -72,6 +72,7 @@ ground.position.y = -0.3;
 ground.receiveShadow = true;
 scene.add(ground);
 
+const bulbSpots = [];
 function tree(x, z, s) {
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.4, 6), flat(0x6b4226));
@@ -82,6 +83,15 @@ function tree(x, z, s) {
     c.position.y = y;
     c.castShadow = true;
     g.add(c);
+    // a string of lights spiralling down this tier
+    const n = Math.round(r * 13);
+    const off = rand(0, Math.PI * 2);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n * 0.85; // 0 = bottom edge, 1 = tip
+      const a = off + t * Math.PI * 3.2;
+      const rr = r * (1 - t) + 0.03;
+      bulbSpots.push({ g, local: new THREE.Vector3(Math.cos(a) * rr, y - h / 2 + t * h, Math.sin(a) * rr) });
+    }
   });
   const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), flat(0xffd34d, { emissive: 0xffb400, emissiveIntensity: 0.8 }));
   star.position.y = 2.25;
@@ -167,6 +177,39 @@ for (let i = 0; i < SNOW; i++) snowPos.set([rand(-10, 10), rand(0, 12), rand(-10
 snowGeo.setAttribute("position", new THREE.BufferAttribute(snowPos, 3));
 const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: 0.12, map: snowTex, transparent: true, depthWrite: false }));
 scene.add(snow);
+
+// Christmas lights: small bright bulbs plus a soft additive glow around each
+const BULB_COLORS = [0xff2020, 0xffb300, 0x1f6bff, 0xff2fb4, 0xff7a00, 0xffffff].map((c) => new THREE.Color(c));
+const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial(), bulbSpots.length);
+const glowGeo = new THREE.BufferGeometry();
+const glowPos = new Float32Array(bulbSpots.length * 3);
+const glowCol = new Float32Array(bulbSpots.length * 3);
+const bulbInfo = bulbSpots.map(({ g, local }, i) => {
+  g.updateMatrixWorld(true);
+  const w = g.localToWorld(local.clone());
+  bulbs.setMatrixAt(i, new THREE.Matrix4().makeTranslation(w.x, w.y, w.z));
+  glowPos.set([w.x, w.y, w.z], i * 3);
+  return { color: BULB_COLORS[i % BULB_COLORS.length], phase: rand(0, 6.3), speed: rand(1.2, 3.2) };
+});
+glowGeo.setAttribute("position", new THREE.BufferAttribute(glowPos, 3));
+glowGeo.setAttribute("color", new THREE.BufferAttribute(glowCol, 3));
+const glows = new THREE.Points(glowGeo, new THREE.PointsMaterial({
+  size: 0.8, map: snowTex, vertexColors: true, transparent: true,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+scene.add(bulbs, glows);
+const tmpCol = new THREE.Color();
+const WHITE = new THREE.Color(1, 1, 1);
+function twinkle(time) {
+  bulbInfo.forEach((b, i) => {
+    const k = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time * b.speed + b.phase));
+    tmpCol.copy(b.color).multiplyScalar(0.55 + 0.45 * k).lerp(WHITE, 0.12 * k);
+    bulbs.setColorAt(i, tmpCol);
+    glowCol.set([b.color.r * k * 1.3, b.color.g * k * 1.3, b.color.b * k * 1.3], i * 3);
+  });
+  bulbs.instanceColor.needsUpdate = true;
+  glowGeo.attributes.color.needsUpdate = true;
+}
 
 // ============================================================================
 // Folded papers
@@ -377,6 +420,7 @@ function frame() {
   const pulse = state.stage === "pick" ? 0.25 + 0.25 * Math.sin(time * 5) : 0;
   for (const p of papers) if (!p.flying) p.halves.forEach((h) => (h.front.material.emissive.setHex(0xffc94d), (h.front.material.emissiveIntensity = pulse)));
 
+  twinkle(time);
   const sp = snowGeo.attributes.position.array;
   for (let i = 0; i < SNOW; i++) {
     sp[i * 3 + 1] -= dt * (0.5 + (i % 7) * 0.08);
