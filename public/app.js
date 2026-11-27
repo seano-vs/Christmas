@@ -175,7 +175,22 @@ const snowGeo = new THREE.BufferGeometry();
 const snowPos = new Float32Array(SNOW * 3);
 for (let i = 0; i < SNOW; i++) snowPos.set([rand(-10, 10), rand(0, 12), rand(-10, 8)], i * 3);
 snowGeo.setAttribute("position", new THREE.BufferAttribute(snowPos, 3));
-const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: 0.12, map: snowTex, transparent: true, depthWrite: false }));
+const snowVel = new Float32Array(SNOW * 3); // extra motion from shaking, decays away
+
+// Snow-globe effect: shaking the phone whirls the snow up and around.
+function stirSnow(k) {
+  const dir = 1; // always swirl the same way around the hat, so repeated shakes build up
+  for (let i = 0; i < SNOW; i++) {
+    const j = i * 3;
+    const x = snowPos[j], z = snowPos[j + 2] + 1;
+    const r = Math.hypot(x, z) || 1;
+    snowVel[j] += (-z / r) * dir * 1.6 * k + rand(-1, 1) * k;
+    snowVel[j + 1] += rand(-0.6, 1.6) * k;
+    snowVel[j + 2] += (x / r) * dir * 1.6 * k + rand(-1, 1) * k;
+    for (let a = 0; a < 3; a++) snowVel[j + a] = clamp(snowVel[j + a], -3.5, 3.5);
+  }
+}
+const snow =new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: 0.12, map: snowTex, transparent: true, depthWrite: false }));
 scene.add(snow);
 
 // Christmas lights: small bright bulbs plus a soft additive glow around each
@@ -422,10 +437,17 @@ function frame() {
 
   twinkle(time);
   const sp = snowGeo.attributes.position.array;
+  const drag = Math.exp(-1.6 * dt);
   for (let i = 0; i < SNOW; i++) {
-    sp[i * 3 + 1] -= dt * (0.5 + (i % 7) * 0.08);
-    sp[i * 3] += Math.sin(time + i) * dt * 0.15;
-    if (sp[i * 3 + 1] < 0) sp[i * 3 + 1] = 12;
+    const j = i * 3;
+    sp[j] += (Math.sin(time + i) * 0.15 + snowVel[j]) * dt;
+    sp[j + 1] += (snowVel[j + 1] - (0.5 + (i % 7) * 0.08)) * dt;
+    sp[j + 2] += snowVel[j + 2] * dt;
+    snowVel[j] *= drag; snowVel[j + 1] *= drag; snowVel[j + 2] *= drag;
+    if (sp[j + 1] < 0) { sp[j + 1] = 12; snowVel[j + 1] = 0; }
+    if (sp[j + 1] > 12) { sp[j + 1] = 12; snowVel[j + 1] = -Math.abs(snowVel[j + 1]) * 0.5; }
+    if (sp[j] > 10) sp[j] -= 20; else if (sp[j] < -10) sp[j] += 20;
+    if (sp[j + 2] > 8) sp[j + 2] -= 18; else if (sp[j + 2] < -10) sp[j + 2] += 18;
   }
   snowGeo.attributes.position.needsUpdate = true;
 
@@ -533,16 +555,24 @@ async function askMotion() {
 }
 
 let lastA = null;
+let lastStir = 0;
+// iPhones only report motion after a tap grants permission, so ask on the
+// very first tap anywhere; then the snow reacts from the menu screen onward.
+addEventListener("pointerdown", () => askMotion(), { once: true, capture: true });
 addEventListener("devicemotion", (e) => {
   const a = e.accelerationIncludingGravity;
   if (!a || a.x == null) return;
   if (lastA) {
     const d = Math.hypot(a.x - lastA.x, a.y - lastA.y, a.z - lastA.z);
-    if (d > 9 && state.stage === "shake") {
+    if (d > 9) {
       const k = clamp(d / 22, 0.4, 1.4);
-      shakeImpulse(k);
-      addShake(k * 0.045);
-      navigator.vibrate?.(15);
+      const now = performance.now();
+      if (now - lastStir > 120) { lastStir = now; stirSnow(k * 0.5); }
+      if (state.stage === "shake") {
+        shakeImpulse(k);
+        addShake(k * 0.045);
+        navigator.vibrate?.(15);
+      }
     }
   }
   lastA = { x: a.x, y: a.y, z: a.z };
@@ -576,6 +606,7 @@ function addShake(x) {
 // ---------------------------------------------------------------- tapping
 const ray = new THREE.Raycaster();
 canvas.addEventListener("pointerdown", (e) => {
+  if (state.stage === "menu") { stirSnow(0.6); return; } // tap the sky to swirl the snow
   if (state.stage === "shake") {
     shakeImpulse(1);
     addShake(0.34);
