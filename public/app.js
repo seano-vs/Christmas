@@ -175,22 +175,12 @@ const snowGeo = new THREE.BufferGeometry();
 const snowPos = new Float32Array(SNOW * 3);
 for (let i = 0; i < SNOW; i++) snowPos.set([rand(-10, 10), rand(0, 12), rand(-10, 8)], i * 3);
 snowGeo.setAttribute("position", new THREE.BufferAttribute(snowPos, 3));
-const snowVel = new Float32Array(SNOW * 3); // extra motion from shaking, decays away
+// Snow falls "down" for real: lean the phone and it drifts that way.
+// lean = angle of gravity across the screen (0 = straight down, + = toward the right edge).
+const tilt = { lean: 0, target: 0 };
+const camRight = new THREE.Vector3();
 
-// Snow-globe effect: shaking the phone whirls the snow up and around.
-function stirSnow(k) {
-  const dir = 1; // always swirl the same way around the hat, so repeated shakes build up
-  for (let i = 0; i < SNOW; i++) {
-    const j = i * 3;
-    const x = snowPos[j], z = snowPos[j + 2] + 1;
-    const r = Math.hypot(x, z) || 1;
-    snowVel[j] += (-z / r) * dir * 1.6 * k + rand(-1, 1) * k;
-    snowVel[j + 1] += rand(-0.6, 1.6) * k;
-    snowVel[j + 2] += (x / r) * dir * 1.6 * k + rand(-1, 1) * k;
-    for (let a = 0; a < 3; a++) snowVel[j + a] = clamp(snowVel[j + a], -3.5, 3.5);
-  }
-}
-const snow =new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: 0.12, map: snowTex, transparent: true, depthWrite: false }));
+const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: 0.12, map: snowTex, transparent: true, depthWrite: false }));
 scene.add(snow);
 
 // Christmas lights: small bright bulbs plus a soft additive glow around each
@@ -437,15 +427,16 @@ function frame() {
 
   twinkle(time);
   const sp = snowGeo.attributes.position.array;
-  const drag = Math.exp(-1.6 * dt);
+  tilt.lean += (tilt.target - tilt.lean) * Math.min(1, dt * 3);
+  camRight.setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize();
+  const side = Math.sin(tilt.lean) * 1.6, down = Math.max(0.25, Math.cos(tilt.lean));
   for (let i = 0; i < SNOW; i++) {
     const j = i * 3;
-    sp[j] += (Math.sin(time + i) * 0.15 + snowVel[j]) * dt;
-    sp[j + 1] += (snowVel[j + 1] - (0.5 + (i % 7) * 0.08)) * dt;
-    sp[j + 2] += snowVel[j + 2] * dt;
-    snowVel[j] *= drag; snowVel[j + 1] *= drag; snowVel[j + 2] *= drag;
-    if (sp[j + 1] < 0) { sp[j + 1] = 12; snowVel[j + 1] = 0; }
-    if (sp[j + 1] > 12) { sp[j + 1] = 12; snowVel[j + 1] = -Math.abs(snowVel[j + 1]) * 0.5; }
+    const fall = 0.5 + (i % 7) * 0.08;
+    sp[j] += (Math.sin(time + i) * 0.15 + camRight.x * side * fall) * dt;
+    sp[j + 1] -= fall * down * dt;
+    sp[j + 2] += camRight.z * side * fall * dt;
+    if (sp[j + 1] < 0) sp[j + 1] = 12;
     if (sp[j] > 10) sp[j] -= 20; else if (sp[j] < -10) sp[j] += 20;
     if (sp[j + 2] > 8) sp[j + 2] -= 18; else if (sp[j + 2] < -10) sp[j + 2] += 18;
   }
@@ -555,27 +546,29 @@ async function askMotion() {
 }
 
 let lastA = null;
-let lastStir = 0;
+let ySign = 0; // iOS reports gravity with the opposite sign to Android; learn which from how the phone is held
 // iPhones only report motion after a tap grants permission, so ask on the
-// very first tap anywhere; then the snow reacts from the menu screen onward.
+// very first tap anywhere; then the snow follows the phone from the menu onward.
 addEventListener("pointerdown", () => askMotion(), { once: true, capture: true });
 addEventListener("devicemotion", (e) => {
   const a = e.accelerationIncludingGravity;
   if (!a || a.x == null) return;
   if (lastA) {
     const d = Math.hypot(a.x - lastA.x, a.y - lastA.y, a.z - lastA.z);
-    if (d > 9) {
+    if (d > 9 && state.stage === "shake") {
       const k = clamp(d / 22, 0.4, 1.4);
-      const now = performance.now();
-      if (now - lastStir > 120) { lastStir = now; stirSnow(k * 0.5); }
-      if (state.stage === "shake") {
-        shakeImpulse(k);
-        addShake(k * 0.045);
-        navigator.vibrate?.(15);
-      }
+      shakeImpulse(k);
+      addShake(k * 0.045);
+      navigator.vibrate?.(15);
     }
   }
   lastA = { x: a.x, y: a.y, z: a.z };
+  // which way is down across the screen?
+  if (Math.abs(a.y) > 4) ySign = ySign * 0.95 + Math.sign(a.y) * 0.05;
+  const sgn = ySign < 0 ? -1 : 1;
+  const gx = a.x * sgn, gy = a.y * sgn;
+  const flatness = clamp((Math.hypot(gx, gy) - 2) / 4, 0, 1); // lying flat = no lean
+  tilt.target = clamp(Math.atan2(-gx, gy), -1.3, 1.3) * flatness;
 });
 
 const isTouch = matchMedia("(pointer: coarse)").matches;
@@ -606,7 +599,6 @@ function addShake(x) {
 // ---------------------------------------------------------------- tapping
 const ray = new THREE.Raycaster();
 canvas.addEventListener("pointerdown", (e) => {
-  if (state.stage === "menu") { stirSnow(0.6); return; } // tap the sky to swirl the snow
   if (state.stage === "shake") {
     shakeImpulse(1);
     addShake(0.34);
