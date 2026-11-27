@@ -37,9 +37,7 @@ curl -X POST https://<your-worker>/api/reset -H "x-admin-key: <password>"
 
 WhatsApp can't let a website post straight into a group. The Business API doesn't support normal groups, and invite links can't carry a message. So the button opens WhatsApp with the message already filled in (`wa.me/?text=…`), and you pick the group. That's one extra tap.
 
-The message has a link like `https://seance.sh/xmas/s/Alice?v=…`. WhatsApp turns it into a preview card titled **"🎩 Alice pulled Bob from the hat!"**, with "3 of 6 have drawn. 3 still to go" underneath. Tapping the card opens the game.
-
-The card's picture is a snapshot of Alice's own unfolded paper. Her phone renders it the moment the paper opens and uploads it to the Worker, which stores it in the Durable Object and serves it at `/card/Alice.jpg`. Only the phone that made the draw can upload it. If the upload hasn't happened, the card shows the generic hat picture instead. The `?v=` part changes with every draw, so WhatsApp never shows a stale preview.
+The message has a link like `https://<worker>/s/Alice`. WhatsApp turns it into a preview card: **"🎩 Alice pulled a name from the hat!"**, plus "3 of 6 have drawn. 3 still to go" and a picture of the hat. Tapping the card opens the game. The card **never shows who someone got**.
 
 To start things off, post `https://<worker>/s` (or just the main URL) in the group.
 
